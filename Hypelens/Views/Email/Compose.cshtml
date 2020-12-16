@@ -1,0 +1,84 @@
+﻿@{
+    ViewData["Title"] = "Compose";
+    ViewData["AppClass"] = "app-content-full-height";
+    ViewData["AppContentClass"] = "p-0";
+}
+@section Styles {
+    <link href="~/lib/bootstrap-tagsinput/dist/bootstrap-tagsinput.css" rel="stylesheet" />
+    <link href="~/lib/summernote/dist/summernote.css" rel="stylesheet" />
+    <link href="~/lib/summernote/dist/summernote-bs4.css" rel="stylesheet" />
+}
+@section Scripts {
+    <script src="~/lib/bootstrap-tagsinput/dist/bootstrap-tagsinput.min.js"></script>
+    <script src="~/lib/summernote/dist/summernote.min.js"></script>
+    <script src="~/lib/summernote/dist/summernote-bs4.min.js"></script>
+    <script src="~/js/demo/email-compose.demo.js"></script>
+}
+
+
+<!-- BEGIN mailbox -->
+<div class="mailbox">
+    <!-- BEGIN mailbox-toolbar -->
+    <div class="mailbox-toolbar">
+        <div class="mailbox-toolbar-item"><span class="mailbox-toolbar-text">New Message</span></div>
+        <div class="mailbox-toolbar-item"><a href="#" class="mailbox-toolbar-link active">Send</a></div>
+        <div class="mailbox-toolbar-item"><a href="#" class="mailbox-toolbar-link">Attachment</a></div>
+        <div class="mailbox-toolbar-item"><a asp-controller="Email" asp-action="Inbox" class="mailbox-toolbar-link">Discard</a></div>
+        <div class="mailbox-toolbar-item dropdown">
+            <a href="#" class="mailbox-toolbar-link" data-toggle="dropdown"><i class="fa fa-ellipsis-h"></i></a>
+            <div class="dropdown-menu ml-n1">
+                <a href="#" class="dropdown-item">Save draft</a>
+                <a href="#" class="dropdown-item">Show From</a>
+                <a href="#" class="dropdown-item">Check names</a>
+                <a href="#" class="dropdown-item">Set importance</a>
+                <a href="#" class="dropdown-item">Switch to plain text</a>
+                <a href="#" class="dropdown-item">Check for accessibility issues</a>
+            </div>
+        </div>
+        <div class="mailbox-toolbar-item ml-auto"><a href="#" class="mailbox-toolbar-link"><i class="fa fa-redo fa-fw fs-12px mr-1"></i> Undo</a></div>
+        <div class="mailbox-toolbar-item"><a asp-controller="Email" asp-action="Inbox" class="mailbox-toolbar-link"><i class="fa fa-times fa-fw"></i> Cancel</a></div>
+    </div>
+    <!-- END mailbox-toolbar -->
+    <!-- BEGIN mailbox-body -->
+    <div class="mailbox-body">
+        <div class="mailbox-content">
+            <!-- BEGIN scrollbar -->
+            <div data-scrollbar="true" data-height="100%" data-skip-mobile="true">
+                <div class="mailbox-form">
+                    <form action="#" method="POST" name="email_form">
+                        <div class="mailbox-form-header">
+                            <div class="form-group row mb-2">
+                                <label class="col-form-label width-100 pl-2 pr-2 fw-500 text-right">To:</label>
+                                <div class="col">
+                                    <input type="text" class="form-control" id="tagsinput-to" data-role="tagsinput" value="admin@Hypelens.com" />
+                                </div>
+                            </div>
+                            <div class="form-group row mb-2">
+                                <label class="col-form-label width-100 pl-2 pr-2 fw-500 text-right">Cc:</label>
+                                <div class="col">
+                                    <input type="text" class="form-control" id="tagsinput-cc" data-role="tagsinput" value="" />
+                                </div>
+                            </div>
+                            <div class="form-group row mb-2">
+                                <label class="col-form-label width-100 pl-2 pr-2 fw-500 text-right">Bcc:</label>
+                                <div class="col">
+                                    <input type="text" class="form-control" id="tagsinput-bcc" data-role="tagsinput" value="" />
+                                </div>
+                            </div>
+                            <div class="form-group row mb-n2">
+                                <label class="col-form-label width-100 pl-2 pr-2 fw-500 text-right">Subject:</label>
+                                <div class="col">
+                                    <input type="text" class="form-control" placeholder="Email subject" />
+                                </div>
+                            </div>
+                        </div>
+                        <textarea name="text" class="summernote form-control" title="Contents"></textarea>
+                    </form>
+                </div>
+            </div>
+            <!-- END scrollbar -->
+        </div>
+    </div>
+    <!-- END mailbox-body -->
+</div>
+<!-- END mailbox -->
