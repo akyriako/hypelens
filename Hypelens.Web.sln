@@ -1,7 +1,7 @@
 
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens", "Hypelens\Hypelens.csproj", "{2ED8CD3D-06DB-4DDD-8F65-3F4865F93502}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Web", "Hypelens.Web\Hypelens.Web.csproj", "{2ED8CD3D-06DB-4DDD-8F65-3F4865F93502}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

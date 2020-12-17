@@ -4,21 +4,21 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Hypelens.Controllers
+namespace Hypelens.Web.Controllers
 {
-    public class FormsController : Controller
+    public class EmailController : Controller
     {
-        public IActionResult FormElements()
+        public IActionResult Inbox()
         {
             return View();
         }
 
-        public IActionResult FormPlugins()
+        public IActionResult Compose()
         {
             return View();
         }
 
-        public IActionResult Wizards()
+        public IActionResult Detail()
         {
             return View();
         }

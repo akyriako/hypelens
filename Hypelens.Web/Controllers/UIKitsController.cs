@@ -4,36 +4,41 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Hypelens.Controllers
+namespace Hypelens.Web.Controllers
 {
-    public class PagesController : Controller
+    public class UIKitsController : Controller
     {
-        public IActionResult Gallery()
+        public IActionResult Bootstrap()
         {
             return View();
         }
 
-        public IActionResult SearchResults()
+        public IActionResult Buttons()
         {
             return View();
         }
 
-        public IActionResult ComingSoonPage()
+        public IActionResult Card()
         {
             return View();
         }
 
-        public IActionResult ErrorPage()
+        public IActionResult Icons()
         {
             return View();
         }
 
-        public IActionResult Login()
+        public IActionResult ModalNotifications()
         {
             return View();
         }
 
-        public IActionResult Register()
+        public IActionResult Typography()
+        {
+            return View();
+        }
+
+        public IActionResult TabsAccordions()
         {
             return View();
         }

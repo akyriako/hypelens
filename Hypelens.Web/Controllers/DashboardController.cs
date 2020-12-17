@@ -5,9 +5,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Hypelens.Models;
+using Hypelens.Web.Models;
 
-namespace Hypelens.Controllers
+namespace Hypelens.Web.Controllers
 {
     public class DashboardController : Controller
     {

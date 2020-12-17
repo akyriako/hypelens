@@ -4,16 +4,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Hypelens.Controllers
+namespace Hypelens.Web.Controllers
 {
-    public class TablesController : Controller
+    public class ChartsController : Controller
     {
-        public IActionResult TableElements()
+        public IActionResult ChartJs()
         {
             return View();
         }
 
-        public IActionResult TablePlugins()
+        public IActionResult ApexchartsJs()
         {
             return View();
         }

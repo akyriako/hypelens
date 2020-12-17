@@ -1,6 +1,6 @@
 using System;
 
-namespace Hypelens.Models
+namespace Hypelens.Web.Models
 {
     public class ErrorViewModel
     {
