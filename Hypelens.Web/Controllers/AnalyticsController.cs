@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Hypelens.Controllers
+namespace Hypelens.Web.Controllers
 {
-    public class SettingsController : Controller
+    public class AnalyticsController : Controller
     {
         public IActionResult Index()
         {
