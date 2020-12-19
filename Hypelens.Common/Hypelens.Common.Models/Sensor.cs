@@ -3,10 +3,10 @@ using Newtonsoft.Json;
 
 namespace Hypelens.Common.Models
 {
-    public class SensorRequest
+    public class Sensor
     {
-        [JsonProperty("sensorId")]
-        public string SensorId { get; set; }
+        [JsonProperty("id")]
+        public string Id { get; set; }
 
         [JsonProperty("tenantId")]
         public string TenantId { get; set; }

@@ -1,12 +1,11 @@
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+using Hypelens.Common.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -18,16 +17,12 @@ namespace Hypelens.Functions.SensorInstancesManager
         public static async Task<List<string>> RunOrchestrator(
             [OrchestrationTrigger] IDurableOrchestrationContext context)
         {
+            var sensor = context.GetInput<Sensor>();
+            sensor.Id = context.InstanceId;
+
             var outputs = new List<string>();
-
-            string tenantId = context.GetInput<string>();
-
-            // Replace "hello" with the name of your Durable Activity Function.
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"Tokyo-{tenantId}"));
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"Seattle-{tenantId}"));
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"London-{tenantId}"));
-
-            // returns ["Hello Tokyo!", "Hello Seattle!", "Hello London!"]
+            outputs.Add(await context.CallActivityAsync<string>("ActivateSensor", sensor));
+            
             return outputs;
         }
 
@@ -38,17 +33,26 @@ namespace Hypelens.Functions.SensorInstancesManager
             return $"Hello {name}!";
         }
 
+        [FunctionName("ActivateSensor")]
+        public static string ActivateSensor([ActivityTrigger] Sensor sensor, ILogger log)
+        {
+            log.LogInformation($"Saying hello from sensor {sensor.Id}.");
+            return $"Hello {sensor.TenantId}!";
+        }
+
         [FunctionName("StartSensorInstance")]
         public static async Task StartSensor(
             [ServiceBusTrigger("start-sensors-queue", Connection = "AzureServiceBus")] string inMessage,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] IAsyncCollector<Sensor> sensors,
             [DurableClient] IDurableOrchestrationClient client,
             ILogger log)
         {
-            dynamic sensorRequest = JsonConvert.DeserializeObject(inMessage);
-            string tenantId = sensorRequest?.tenantId;
+            var sensor = JsonConvert.DeserializeObject<Sensor>(inMessage);
+            string instanceId = await client.StartNewAsync<Sensor>("SensorPipeline", sensor);
 
-            string instanceId = await client.StartNewAsync<string>("SensorPipeline", tenantId);
-            log.LogInformation($"Started orchestration '{instanceId}' for tenant '{tenantId}'.");
+            await sensors.AddAsync(sensor);
+
+            log.LogInformation($"Started orchestration '{instanceId}' for tenant '{sensor.TenantId}'.");
         }
 
         [FunctionName("TerminateSensorInstance")]

@@ -1,4 +1,5 @@
 ﻿{
-  "sensorId": null,
-  "tenantId": "123"
+  "id": null,
+  "tenantId": "e489f125-ad73-4bad-ae5b-1377ad51492e",
+  "hashtags": [ "news", "germany" ]
 }
