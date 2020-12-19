@@ -8,6 +8,7 @@ using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace Hypelens.Functions.SensorInstancesManager
 {
@@ -19,10 +20,12 @@ namespace Hypelens.Functions.SensorInstancesManager
         {
             var outputs = new List<string>();
 
+            string tenantId = context.GetInput<string>();
+
             // Replace "hello" with the name of your Durable Activity Function.
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", "Tokyo"));
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", "Seattle"));
-            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", "London"));
+            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"Tokyo-{tenantId}"));
+            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"Seattle-{tenantId}"));
+            outputs.Add(await context.CallActivityAsync<string>("SensorInstancesManager_Hello", $"London-{tenantId}"));
 
             // returns ["Hello Tokyo!", "Hello Seattle!", "Hello London!"]
             return outputs;
@@ -37,12 +40,15 @@ namespace Hypelens.Functions.SensorInstancesManager
 
         [FunctionName("StartSensorInstance")]
         public static async Task StartSensor(
-            [ServiceBusTrigger("start-sensors-queue", Connection = "AzureServiceBus")] string queueItem,
+            [ServiceBusTrigger("start-sensors-queue", Connection = "AzureServiceBus")] string inMessage,
             [DurableClient] IDurableOrchestrationClient client,
             ILogger log)
         {
-            string instanceId = await client.StartNewAsync("SensorPipeline", null);
-            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+            dynamic sensorRequest = JsonConvert.DeserializeObject(inMessage);
+            string tenantId = sensorRequest?.tenantId;
+
+            string instanceId = await client.StartNewAsync<string>("SensorPipeline", tenantId);
+            log.LogInformation($"Started orchestration '{instanceId}' for tenant '{tenantId}'.");
         }
 
         [FunctionName("TerminateSensorInstance")]
