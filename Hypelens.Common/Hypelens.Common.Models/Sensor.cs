@@ -8,6 +8,9 @@ namespace Hypelens.Common.Models
         [JsonProperty("id")]
         public string Id { get; set; }
 
+        [JsonProperty("instanceId")]
+        public string InstanceId { get; set; }
+
         [JsonProperty("tenantId")]
         public string TenantId { get; set; }
 

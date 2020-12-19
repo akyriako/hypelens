@@ -1,7 +1,7 @@
 
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Functions.SensorInstancesManager", "Hypelens.Functions\Hypelens.Functions.SensorInstancesManager\Hypelens.Functions.SensorInstancesManager.csproj", "{5BF32465-A970-45F7-9955-37FD58DC9B9E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Functions.SensorsOrchestrator", "Hypelens.Functions\Hypelens.Functions.SensorsOrchestrator\Hypelens.Functions.SensorsOrchestrator.csproj", "{5BF32465-A970-45F7-9955-37FD58DC9B9E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Common.Models", "Hypelens.Common\Hypelens.Common.Models\Hypelens.Common.Models.csproj", "{7ED8FDAE-E093-4A10-A369-33EC83B3F63C}"
 EndProject
