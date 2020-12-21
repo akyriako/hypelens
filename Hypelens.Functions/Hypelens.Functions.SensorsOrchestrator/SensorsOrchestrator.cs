@@ -61,7 +61,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 await client.TerminateAsync(sensor.Id, "user_restart");
             }
 
-            string instanceId = await client.StartNewAsync<Sensor>("SensorPipeline", sensor);
+            string instanceId = await client.StartNewAsync<Sensor>("SensorsOrchestrator", sensor);
             sensor.InstanceId = instanceId;
 
             await sensors.AddAsync(sensor);
@@ -81,10 +81,11 @@ namespace Hypelens.Functions.SensorsOrchestrator
             log.LogInformation($"Terminated orchestration '{sensor.InstanceId}' for tenant '{sensor.TenantId}'.");
         }
 
-        [FunctionName("QuerySensor")]
-        public static async Task<IActionResult> QuerySensor(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "Sensors/Status/{instanceId}")] HttpRequestMessage httpRequestMessage,
+        [FunctionName("GetSensorStatus")]
+        public static async Task<IActionResult> GetSensorStatus(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "Tenants/{tenantId}/Sensors/Instances/{instanceId}/Status")] HttpRequestMessage httpRequestMessage,
             [DurableClient] IDurableOrchestrationClient client,
+            string tenantId,
             string instanceId,
             ILogger log)
         {
@@ -105,6 +106,51 @@ namespace Hypelens.Functions.SensorsOrchestrator
                     return new NotFoundResult();
                 }
             }
+        }
+
+        [FunctionName("GetSensors")]
+        public static async Task<IActionResult> GetSensors(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "Tenants/{tenantId}/Sensors/")] HttpRequestMessage httpRequestMessage,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb", SqlQuery = "SELECT * FROM c WHERE c.tenantId={tenantId} ORDER BY c._ts DESC")] IEnumerable<Sensor> sensors,
+            [DurableClient] IDurableOrchestrationClient client,
+            string tenantId,
+            ILogger log)
+        {
+            if (string.IsNullOrEmpty(tenantId))
+            {
+                return new BadRequestResult();
+            }
+            else
+            {
+                if (sensors != null)
+                {
+                    return new OkObjectResult(sensors);
+                }
+                else
+                {
+                    return new NotFoundResult();
+                }
+            }
+        }
+
+        [FunctionName("DeleteSensor")]
+        public static async Task<IActionResult> DeleteSensor(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "Tenants/{tenantId}/Sensors/{id}")] HttpRequestMessage httpRequestMessage,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb", Id = "{id}", PartitionKey = "{tenantId}")] Microsoft.Azure.Documents.Document sensor,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
+            [DurableClient] IDurableOrchestrationClient durableOrchestrationClient,
+            string tenantId,
+            string id,
+            ILogger log)
+        {
+            if (sensor == null || String.IsNullOrEmpty(id) || String.IsNullOrEmpty(tenantId))
+            {
+                return new BadRequestResult();
+            }
+
+            await documentClient.DeleteDocumentAsync(sensor.SelfLink, new Microsoft.Azure.Documents.Client.RequestOptions() { PartitionKey = new Microsoft.Azure.Documents.PartitionKey(tenantId) });
+
+            return new OkResult();
         }
 
         //[FunctionName("SensorInstancesManager_HttpStart")]
