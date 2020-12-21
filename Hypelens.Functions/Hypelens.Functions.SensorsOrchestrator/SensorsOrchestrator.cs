@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Hypelens.Common.Models;
@@ -9,6 +10,8 @@ using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Tweetinvi;
+using Tweetinvi.Models;
 
 namespace Hypelens.Functions.SensorsOrchestrator
 {
@@ -27,9 +30,50 @@ namespace Hypelens.Functions.SensorsOrchestrator
         }
 
         [FunctionName("ActivateSensor")]
-        public static string ActivateSensor([ActivityTrigger] Sensor sensor, ILogger log)
+        public static async Task<string> ActivateSensorAsync([ActivityTrigger] Sensor sensor, ILogger log)
         {
-            log.LogInformation($"Saying hello from sensor {sensor.Id}.");
+            log.LogInformation($"Saying hello from sensor {sensor.InstanceId}.");
+
+            string consumerKey = "O4B0C8Ph9Tg5Xa83TBSreicvf";
+            string consumerSecret = "Hl1yOqzMXudYTb4PcLpI15CgAwJpcbxIsDbe2R39ZYlMpRYefy";
+            string accessToken = "1340260668977668096-fiRdO0HgKz1DIfpSd7wueQZGlPqoEU";
+            string accessSecret = "S2BLCXJ2kFU1F7NssQ7XMmxgcNnPx3ZobwWdzbkqvRRn6";
+            //string bearerToken = "AAAAAAAAAAAAAAAAAAAAAFJjKwEAAAAATWk4coE4EbTYUUH15%2BfHx2Q0Oa0%3DPSPEOyC4aUR7el9HlOF7LUWwpbdAFPpnqh82ygLyesXJjV153c";
+
+            //var appCredentials = new ConsumerOnlyCredentials(consumerKey, consumerSecret, bearerToken);
+            //var appClient = new TwitterClient(appCredentials);
+            var appClient = new TwitterClient(consumerKey, consumerSecret, accessToken, accessSecret);
+
+            //var twitterStream = appClient.StreamsV2.CreateSampleStream();
+            var twitterStream = appClient.Streams.CreateFilteredStream();
+
+            twitterStream.AddLanguageFilter(LanguageFilter.German);
+            twitterStream.AddLanguageFilter(LanguageFilter.English);
+
+            twitterStream.StallWarnings = true;
+
+            sensor.Hashtags.ToList().ForEach(hashtag =>
+            {
+                twitterStream.AddTrack($"#{hashtag}");
+            });
+
+            int sampleStreamIdx = 0;
+
+            twitterStream.MatchingTweetReceived += (sender, args) =>
+            {
+                if (sampleStreamIdx < 10)
+                {
+                    System.Console.WriteLine(args.Tweet.Text);
+                    sampleStreamIdx++;
+                }
+                else
+                {
+                    twitterStream.Stop();
+                }
+            };
+
+            await twitterStream.StartMatchingAnyConditionAsync();
+
             return $"Hello {sensor.TenantId}!";
         }
 
@@ -61,8 +105,10 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 await client.TerminateAsync(sensor.Id, "user_restart");
             }
 
-            string instanceId = await client.StartNewAsync<Sensor>("SensorsOrchestrator", sensor);
+            string instanceId = Guid.NewGuid().ToString();
             sensor.InstanceId = instanceId;
+
+            await client.StartNewAsync<Sensor>("SensorsOrchestrator", instanceId, sensor);
 
             await sensors.AddAsync(sensor);
 
