@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Hypelens.Common.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Documents;
+using Microsoft.Azure.Documents.Client;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -21,66 +23,119 @@ namespace Hypelens.Functions.SensorsOrchestrator
         public static async Task<List<string>> RunOrchestrator(
             [OrchestrationTrigger] IDurableOrchestrationContext context)
         {
-            var sensor = context.GetInput<Sensor>();
+            var sensorBootstrap = context.GetInput<Tuple<TenantSettings, Sensor>>();
 
             var outputs = new List<string>();
-            outputs.Add(await context.CallActivityAsync<string>("ActivateSensor", sensor));
+            outputs.Add(await context.CallActivityAsync<string>("ActivateSensor", sensorBootstrap));
             
             return outputs;
         }
 
         [FunctionName("ActivateSensor")]
-        public static async Task<string> ActivateSensorAsync([ActivityTrigger] Sensor sensor, ILogger log)
+        public static async Task<string> ActivateSensorAsync(
+            [ActivityTrigger] Tuple<TenantSettings, Sensor> sensorBootstrap,
+            [EventHub("sensors-collected-items", Connection = "EventHub")] IAsyncCollector<SensorCollectedItem> outputEvents,
+            ILogger log)
         {
+            var settings = sensorBootstrap.Item1;
+            var sensor = sensorBootstrap.Item2;
+
             log.LogInformation($"Saying hello from sensor {sensor.InstanceId}.");
 
-            string consumerKey = "O4B0C8Ph9Tg5Xa83TBSreicvf";
-            string consumerSecret = "Hl1yOqzMXudYTb4PcLpI15CgAwJpcbxIsDbe2R39ZYlMpRYefy";
-            string accessToken = "1340260668977668096-fiRdO0HgKz1DIfpSd7wueQZGlPqoEU";
-            string accessSecret = "S2BLCXJ2kFU1F7NssQ7XMmxgcNnPx3ZobwWdzbkqvRRn6";
-            //string bearerToken = "AAAAAAAAAAAAAAAAAAAAAFJjKwEAAAAATWk4coE4EbTYUUH15%2BfHx2Q0Oa0%3DPSPEOyC4aUR7el9HlOF7LUWwpbdAFPpnqh82ygLyesXJjV153c";
+            var userClient = new TwitterClient(settings.ConsumerKey, settings.ConsumerSecret, settings.AccessToken, settings.AccessSecret);
 
-            //var appCredentials = new ConsumerOnlyCredentials(consumerKey, consumerSecret, bearerToken);
-            //var appClient = new TwitterClient(appCredentials);
-            var appClient = new TwitterClient(consumerKey, consumerSecret, accessToken, accessSecret);
+            var twitterStream = userClient.Streams.CreateFilteredStream();
+            twitterStream.TweetMode = TweetMode.Extended;
+            twitterStream.StallWarnings = false;
 
-            //var twitterStream = appClient.StreamsV2.CreateSampleStream();
-            var twitterStream = appClient.Streams.CreateFilteredStream();
-
-            twitterStream.AddLanguageFilter(LanguageFilter.German);
+            //twitterStream.AddLanguageFilter(LanguageFilter.German);
             twitterStream.AddLanguageFilter(LanguageFilter.English);
-
-            twitterStream.StallWarnings = true;
 
             sensor.Hashtags.ToList().ForEach(hashtag =>
             {
-                twitterStream.AddTrack($"#{hashtag}");
+                twitterStream.AddTrack($"{hashtag}");
             });
 
             int sampleStreamIdx = 0;
 
-            twitterStream.MatchingTweetReceived += (sender, args) =>
+            twitterStream.MatchingTweetReceived += async (sender, args) =>
             {
-                if (sampleStreamIdx < 10)
+                if (sampleStreamIdx < 100)
                 {
-                    System.Console.WriteLine(args.Tweet.Text);
+                    System.Console.WriteLine($"{args.Tweet.Id.ToString()}\t{args.Tweet.Text}");
                     sampleStreamIdx++;
+
+                    SensorCollectedItem sensorCollectedItem = new SensorCollectedItem()
+                    {
+                        SensorId = sensor.Id,
+                        TenantId = sensor.TenantId,
+                        Text = args.Tweet.Text,
+                        Url = args.Tweet.Url
+                        
+                    };
+
+                    if (args.Tweet.Hashtags != null || args.Tweet.Hashtags.Count > 0)
+                    {
+                        List<string> hashtags = new List<string>();
+
+                        args.Tweet.Hashtags.ForEach(hashtag =>
+                        {
+                            hashtags.Add(hashtag.Text);
+                        });
+
+                        sensorCollectedItem.Hashtags = hashtags.ToArray();
+                    }
+
+                    if (args.Tweet.UserMentions != null || args.Tweet.UserMentions.Count > 0)
+                    {
+                        List<string> userMentions = new List<string>();
+
+                        args.Tweet.UserMentions.ForEach(userMention =>
+                        {
+                            userMentions.Add(userMention.Name);
+                        });
+
+                        sensorCollectedItem.Mentions = userMentions.ToArray();
+                    }
+
+                    await outputEvents.AddAsync(sensorCollectedItem);
                 }
                 else
                 {
+                    System.Console.WriteLine("##### END #####");
                     twitterStream.Stop();
+                    twitterStream = null;
                 }
             };
+
+            twitterStream.NonMatchingTweetReceived += (sender, args) =>
+            {
+                System.Console.WriteLine($"NOT MATCHING: {args.Tweet.Text}");
+            };
+
+            twitterStream.WarningFallingBehindDetected += TwitterStream_WarningFallingBehindDetected;
+            twitterStream.LimitReached += TwitterStream_LimitReached;
 
             await twitterStream.StartMatchingAnyConditionAsync();
 
             return $"Hello {sensor.TenantId}!";
         }
 
+        private static void TwitterStream_LimitReached(object sender, Tweetinvi.Events.LimitReachedEventArgs e)
+        {
+            System.Console.WriteLine($"TwitterStream_LimitReached: {e.NumberOfTweetsNotReceived.ToString()}");
+        }
+
+        private static void TwitterStream_WarningFallingBehindDetected(object sender, Tweetinvi.Events.WarningFallingBehindEventArgs e)
+        {
+            System.Console.WriteLine($"TwitterStream_WarningFallingBehindDetected: {e.WarningMessage.ToString()}");
+        }
+
         [FunctionName("StartSensorInstance")]
         public static async Task StartSensor(
             [ServiceBusTrigger("start-sensors-queue", Connection = "AzureServiceBus")] string startSensorRequest,
             [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] IAsyncCollector<Sensor> sensors,
+            [CosmosDB(databaseName: "settings", collectionName: "tenants", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
             [DurableClient] IDurableOrchestrationClient client,
             ILogger log)
         {
@@ -102,17 +157,26 @@ namespace Hypelens.Functions.SensorsOrchestrator
             }
             else
             {
-                await client.TerminateAsync(sensor.Id, "user_restart");
+                await client.TerminateAsync(sensor.InstanceId, "user_restart");
             }
 
-            string instanceId = Guid.NewGuid().ToString();
-            sensor.InstanceId = instanceId;
+            var documentResponse = await documentClient.ReadDocumentAsync<TenantSettings>(
+                UriFactory.CreateDocumentUri("settings", "tenants", sensor.TenantId),
+                new RequestOptions { PartitionKey = new PartitionKey("43171124-3995-4924-83b2-f674b109306e") });
 
-            await client.StartNewAsync<Sensor>("SensorsOrchestrator", instanceId, sensor);
+            if (documentResponse != null && documentResponse.Document != null)
+            {
+                string instanceId = Guid.NewGuid().ToString();
+                sensor.InstanceId = instanceId;
 
-            await sensors.AddAsync(sensor);
+                Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
 
-            log.LogInformation($"Started orchestration '{sensor.InstanceId}' for tenant '{sensor.TenantId}'.");
+                await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
+
+                await sensors.AddAsync(sensor);
+
+                log.LogInformation($"Started orchestration '{sensor.InstanceId}' for tenant '{sensor.TenantId}'.");
+            }
         }
 
         [FunctionName("TerminateSensorInstance")]
