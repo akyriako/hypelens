@@ -8,8 +8,8 @@ namespace Hypelens.Common.Models
         [JsonProperty("id")]
         public string Id { get; set; }
 
-        [JsonProperty("instanceId")]
-        public string InstanceId { get; set; }
+        //[JsonProperty("instanceId")]
+        //public string InstanceId { get; set; }
 
         [JsonProperty("tenantId")]
         public string TenantId { get; set; }
@@ -19,5 +19,13 @@ namespace Hypelens.Common.Models
 
         [JsonProperty("accounts")]
         public string[] Accounts { get; set; }
+
+        [JsonProperty("process")]
+        public bool Process { get; set; }
+
+        [JsonProperty("scheduledEnqueuedWaitTime")]
+        public uint? ScheduledEnqueuedWaitTime { get; set; }
+
+
     }
 }
