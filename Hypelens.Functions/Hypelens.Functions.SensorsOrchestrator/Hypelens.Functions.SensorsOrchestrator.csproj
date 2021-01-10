@@ -12,6 +12,7 @@
     <PackageReference Include="TweetinviAPI" Version="5.0.3" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="4.2.0" />
     <PackageReference Include="Microsoft.Azure.ServiceBus" Version="5.1.0" />
+    <PackageReference Include="CodingUpAStorm.VaderSharp" Version="1.0.4" />
   </ItemGroup>
   <ItemGroup>
     <None Include="**/*" />

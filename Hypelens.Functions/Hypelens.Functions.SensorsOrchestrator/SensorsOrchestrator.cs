@@ -16,6 +16,8 @@ using Newtonsoft.Json;
 using Tweetinvi;
 using Tweetinvi.Models;
 using System.Text;
+using VaderSharp;
+using System.Threading;
 
 namespace Hypelens.Functions.SensorsOrchestrator
 {
@@ -36,75 +38,79 @@ namespace Hypelens.Functions.SensorsOrchestrator
         [FunctionName("ActivateSensor")]
         public static async Task<string> ActivateSensorAsync(
             [ActivityTrigger] Tuple<TenantSettings, Sensor> sensorBootstrap,
-            [EventHub("sensors-collected-items", Connection = "EventHub")] IAsyncCollector<SensorCollectedItem> outputEvents,
+            [EventHub("sensors-collected-items", Connection = "EventHub")] IAsyncCollector<SensorCollectedTweet> outputEvents,
             ILogger log)
         {
             var settings = sensorBootstrap.Item1;
             var sensor = sensorBootstrap.Item2;
 
+            int matchingTweetsCnt = 0;
+
+            SentimentIntensityAnalyzer sentimentIntensityAnalyzer = new SentimentIntensityAnalyzer();
+            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 10, 0));
+            Dictionary<string, SensorCollectedTweet> sensorCollectedItems = new Dictionary<string, SensorCollectedTweet>();
+
             log.LogInformation($"Saying hello from sensor {sensor.TenantId}.");
 
             var userClient = new TwitterClient(settings.ConsumerKey, settings.ConsumerSecret, settings.AccessToken, settings.AccessSecret);
 
-            var twitterStream = userClient.Streams.CreateFilteredStream();
-            twitterStream.TweetMode = TweetMode.Extended;
-            twitterStream.StallWarnings = false;
+            var filteredStream = userClient.Streams.CreateFilteredStream();
+            filteredStream.TweetMode = TweetMode.Extended;
+            filteredStream.StallWarnings = false;
 
-            //twitterStream.AddLanguageFilter(LanguageFilter.German);
-            twitterStream.AddLanguageFilter(LanguageFilter.English);
+            filteredStream.AddTrack(sensor);
+            filteredStream.AddFollow(userClient, sensor);
+            filteredStream.AddLanguageFilter(sensor);
 
-            sensor.Hashtags.ToList().ForEach(hashtag =>
+            filteredStream.MatchingTweetReceived += async (sender, args) =>
             {
-                twitterStream.AddTrack($"{hashtag}");
-            });
-
-            int sampleStreamIdx = 0;
-
-            twitterStream.MatchingTweetReceived += async (sender, args) =>
-            {
-                if (sampleStreamIdx < 100)
+                if (matchingTweetsCnt < 500 && !cancellationTokenSource.IsCancellationRequested)
                 {
                     try
                     {
-                        System.Console.WriteLine($"{args.Tweet.Id.ToString()}\t{args.Tweet.Text}");
-                        sampleStreamIdx++;
+                        bool added = false;
+                        matchingTweetsCnt++;
 
                         if (sensor.Process)
                         {
-                            SensorCollectedItem sensorCollectedItem = new SensorCollectedItem()
+                            var tweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.Text.Sanitize());
+                            SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet, tweetPolarityScores.Compound);
+
+                            if (args.Tweet.QuotedTweet != null)
                             {
-                                SensorId = sensor.Id,
-                                TenantId = sensor.TenantId,
-                                Text = args.Tweet.Text,
-                                Url = args.Tweet.Url
+                                var quotedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.QuotedTweet.Text.Sanitize());
+                                SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet, tweetPolarityScores.Compound);
 
-                            };
+                                tweet.OriginalTweetId = quotedTweet.TweetId;
 
-                            if (args.Tweet.Hashtags != null || args.Tweet.Hashtags.Count > 0)
-                            {
-                                List<string> hashtags = new List<string>();
+                                added = sensorCollectedItems.TryAdd(quotedTweet.TweetId, quotedTweet);
 
-                                args.Tweet.Hashtags.ForEach(hashtag =>
+                                if (added)
                                 {
-                                    hashtags.Add(hashtag.Text);
-                                });
+                                    WriteCollectedItemToConsole(quotedTweet);
+                                }
+                            }
+                            else if (args.Tweet.RetweetedTweet != null && args.Tweet.QuotedTweet == null)
+                            {
+                                var retweetedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.RetweetedTweet.Text.Sanitize());
+                                SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet, retweetedTweetPolarityScores.Compound);
 
-                                sensorCollectedItem.Hashtags = hashtags.ToArray();
+                                tweet.OriginalTweetId = retweetedTweet.TweetId;
+
+                                added = sensorCollectedItems.TryAdd(retweetedTweet.TweetId, retweetedTweet);
+
+                                if (added)
+                                {
+                                    WriteCollectedItemToConsole(retweetedTweet);
+                                }
                             }
 
-                            if (args.Tweet.UserMentions != null || args.Tweet.UserMentions.Count > 0)
+                            added = sensorCollectedItems.TryAdd(tweet.TweetId, tweet);
+
+                            if (added)
                             {
-                                List<string> userMentions = new List<string>();
-
-                                args.Tweet.UserMentions.ForEach(userMention =>
-                                {
-                                    userMentions.Add(userMention.Name);
-                                });
-
-                                sensorCollectedItem.Mentions = userMentions.ToArray();
+                                WriteCollectedItemToConsole(tweet);
                             }
-
-                            await outputEvents.AddAsync(sensorCollectedItem);
                         }
                     }
                     catch (Exception matchingTweetReceivedException)
@@ -115,22 +121,27 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 else
                 {
                     System.Console.WriteLine("##### END #####");
-                    twitterStream.Stop();
-                    twitterStream = null;
+
+                    filteredStream.TryStopFilteredStreamIfNotNull();
                 }
             };
 
-            twitterStream.NonMatchingTweetReceived += (sender, args) =>
+            filteredStream.NonMatchingTweetReceived += (sender, args) =>
             {
                 System.Console.WriteLine($"NOT MATCHING: {args.Tweet.Text}");
             };
 
-            twitterStream.WarningFallingBehindDetected += TwitterStream_WarningFallingBehindDetected;
-            twitterStream.LimitReached += TwitterStream_LimitReached;
+            filteredStream.WarningFallingBehindDetected += TwitterStream_WarningFallingBehindDetected;
+            filteredStream.LimitReached += TwitterStream_LimitReached;
 
             try
             {
-                await twitterStream.StartMatchingAnyConditionAsync();
+                Task twitterStartMatchingAnyConditionTask = filteredStream.StartMatchingAnyConditionAsync();
+                Task.WaitAny(new Task[] { twitterStartMatchingAnyConditionTask }, cancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException operationCancelledException)
+            {
+
             }
             catch (Exception exception)
             {
@@ -139,14 +150,20 @@ namespace Hypelens.Functions.SensorsOrchestrator
             }
             finally
             {
-                if (twitterStream != null)
-                {
-                    twitterStream.Stop();
-                    twitterStream = null;
-                }
+                filteredStream.TryStopFilteredStreamIfNotNull();
             }
 
+            sensorCollectedItems.ToList().ForEach(async pair =>
+            {
+                await outputEvents.AddAsync(pair.Value);
+            });
+
             return $"Hello {sensor.TenantId}!";
+        }
+
+        private static void WriteCollectedItemToConsole(SensorCollectedTweet sensorCollectedItem)
+        {
+            System.Console.WriteLine($"{sensorCollectedItem.TweetId}\t{sensorCollectedItem.CompoundPolarityScore.ToString()}\t{sensorCollectedItem.FavoritesCount.ToString()}\t{sensorCollectedItem.RetweetsCount.ToString()}\t{sensorCollectedItem.Text}");
         }
 
         private static void TwitterStream_LimitReached(object sender, Tweetinvi.Events.LimitReachedEventArgs e)
@@ -182,18 +199,24 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 orchestrationStatus.RuntimeStatus == OrchestrationRuntimeStatus.Failed ||
                 orchestrationStatus.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
             {
-                var documentResponse = await documentClient.ReadDocumentAsync<TenantSettings>(
-                UriFactory.CreateDocumentUri("settings", "tenants", sensor.TenantId),
-                new RequestOptions { PartitionKey = new PartitionKey("43171124-3995-4924-83b2-f674b109306e") });
+                //var documentResponse = await documentClient.ReadDocumentAsync<TenantSettings>(
+                //UriFactory.CreateDocumentUri("settings", "tenants", sensor.TenantId),
+                //new RequestOptions { PartitionKey = new PartitionKey("43171124-3995-4924-83b2-f674b109306e") });
 
-                if (documentResponse != null && documentResponse.Document != null)
-                {
-                    string instanceId = sensor.TenantId;
-                    Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
+                //if (documentResponse != null && documentResponse.Document != null)
+                //{
+                //    string instanceId = sensor.TenantId;
+                //    Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
 
-                    await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
-                    await sensors.AddAsync(sensor);
-                }
+                //    await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
+                //    await sensors.AddAsync(sensor);
+                //}
+
+                string instanceId = sensor.TenantId;
+                Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(TenantSettings.GetDevelopmentSettings(), sensor);
+
+                await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
+                await sensors.AddAsync(sensor);
             }
             else
             {
