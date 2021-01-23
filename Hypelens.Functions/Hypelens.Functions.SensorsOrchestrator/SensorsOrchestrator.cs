@@ -45,10 +45,13 @@ namespace Hypelens.Functions.SensorsOrchestrator
             var sensor = sensorBootstrap.Item2;
 
             int matchingTweetsCnt = 0;
+            int buffedtoEventHubIdx = 0;
 
             SentimentIntensityAnalyzer sentimentIntensityAnalyzer = new SentimentIntensityAnalyzer();
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 10, 0));
             Dictionary<string, SensorCollectedTweet> sensorCollectedItems = new Dictionary<string, SensorCollectedTweet>();
+
+            var semaphore = new SemaphoreSlim(1);
 
             log.LogInformation($"Saying hello from sensor {sensor.TenantId}.");
 
@@ -110,6 +113,19 @@ namespace Hypelens.Functions.SensorsOrchestrator
                             if (added)
                             {
                                 WriteCollectedItemToConsole(tweet);
+
+                                await outputEvents.AddAsync(tweet);
+                                Interlocked.Increment(ref buffedtoEventHubIdx);
+
+                                await semaphore.WaitAsync();
+
+                                if (buffedtoEventHubIdx >= 32)
+                                {
+                                    await outputEvents.FlushAsync(new CancellationTokenSource(new TimeSpan(0,0,15)).Token);
+                                    Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
+                                }
+
+                                semaphore.Release();
                             }
                         }
                     }
@@ -153,10 +169,10 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 filteredStream.TryStopFilteredStreamIfNotNull();
             }
 
-            sensorCollectedItems.ToList().ForEach(async pair =>
-            {
-                await outputEvents.AddAsync(pair.Value);
-            });
+            //sensorCollectedItems.ToList().ForEach(async pair =>
+            //{
+            //    await outputEvents.AddAsync(pair.Value);
+            //});
 
             return $"Hello {sensor.TenantId}!";
         }

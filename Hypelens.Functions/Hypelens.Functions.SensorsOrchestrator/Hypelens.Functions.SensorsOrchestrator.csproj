@@ -18,6 +18,16 @@
     <None Include="**/*" />
   </ItemGroup>
   <ItemGroup>
+    <None Remove="bin\Debug\netcoreapp3.1\StartSensorInstance\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\TerminateSensorInstance\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\SensorsOrchestrator\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\ActivateSensor\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\GetSensorStatus\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\ScheduleSensor\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\GetSensors\function.json" />
+    <None Remove="bin\Debug\netcoreapp3.1\DeleteSensor\function.json" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

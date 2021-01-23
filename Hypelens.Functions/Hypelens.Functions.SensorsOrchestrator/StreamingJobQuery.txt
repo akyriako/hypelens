@@ -1,0 +1,70 @@
+﻿WITH MENTIONS_QRY AS 
+(
+    SELECT 
+    tweetsevents.id as sensorId, 
+    tweetsevents.tenantId as tenantId, 
+    Mentions.ArrayValue AS mentions,
+    System.Timestamp as Time
+    FROM tweetsevents TIMESTAMP BY CreatedAt
+    CROSS APPLY GetArrayElements(tweetsevents.mentions) AS Mentions
+)
+
+SELECT 
+    udf.uuidv4(0) as id,
+    sensorId as sensorId,
+    tenantId,
+    mentions AS mentions,
+	COUNT(*) AS count,
+    System.TimeStamp() AS time
+INTO powerbimentions
+FROM MENTIONS_QRY
+GROUP BY
+    tenantId,
+    sensorId,
+    mentions,
+	TumblingWindow(minute, 30)
+HAVING [Count] > 1
+
+WITH HASHTAGS_QRY AS 
+(
+    SELECT 
+    tweetsevents.id as sensorId, 
+    tweetsevents.tenantId as tenantId, 
+    tweetsevents.compoundPolarityScore as polarity,
+    LOWER(Hashtags.ArrayValue) AS hashtags,
+    System.Timestamp as Time
+    FROM tweetsevents TIMESTAMP BY CreatedAt
+    CROSS APPLY GetArrayElements(tweetsevents.hashtags) AS Hashtags
+)
+
+SELECT 
+    udf.uuidv4(0) as id,
+    sensorId as sensorId,
+    tenantId,
+    hashTags AS hashtag,
+	COUNT(*) AS count,
+    AVG(polarity) as polarity,
+    System.TimeStamp() AS time
+INTO powerbihashtags
+FROM HASHTAGS_QRY
+GROUP BY
+    tenantId,
+    sensorId,
+    hashtags,
+	TumblingWindow(minute, 30)
+HAVING [Count] > 1
+
+SELECT 
+    tweetsevents.id as sensorId,
+    tweetsevents.tenantId as tenantId, 
+    tweetsevents.location,
+    COUNT(*) AS Count,
+    System.Timestamp as Time
+INTO powerbilocations
+FROM tweetsevents TIMESTAMP BY CreatedAt
+GROUP BY
+    tweetsevents.tenantId,
+    tweetsevents.id,
+    tweetsevents.location,
+	TumblingWindow(minute, 30)
+HAVING [location] IS NOT NULL
