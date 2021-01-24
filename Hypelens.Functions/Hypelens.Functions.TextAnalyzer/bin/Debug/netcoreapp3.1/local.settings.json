@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=storageaccounthypel8106;AccountKey=rEBMF/QmpfFxX57aq0SNbVo2ZEdin18DQK+ebbT8J89ZnNLRyQVoJA78dSPzBESB8dRCh4IuSiaoeM1Cb0hkQA==;EndpointSuffix=core.windows.net",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet",
+    "AzureServiceBus": "Endpoint=sb://hypelens-manage-sensors.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=hlsNHQrZ6kKUvlPFsudzCk9QIypPsrl51TzArZBhYjw=",
+    "CosmosDb": "AccountEndpoint=https://hypelenscosmosdb01.documents.azure.com:443/;AccountKey=GgoSMV88hl8m7CUhe8XSi3ai4TEM9yKG6y6D3ZMZIFQ1Q9ZjcqU1k1DkZQoer0FPKrGY7I1YNQZBpJRSlGgstA==;",
+    "EventHub": "Endpoint=sb://hypelens-sensors-eh.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=qe8Gqo+uyMRCgj7TdvSP3CQtD2Ej/G1S6CH2mune2qw="
+  }
+}

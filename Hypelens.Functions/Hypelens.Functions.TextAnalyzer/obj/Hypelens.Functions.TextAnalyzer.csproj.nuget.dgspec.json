@@ -1,0 +1,158 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/akyriako/Work/HYPELENS/Hypelens.Functions.TextAnalyzer/Hypelens.Functions.TextAnalyzer.csproj": {}
+  },
+  "projects": {
+    "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/Hypelens.Common.Models.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/Hypelens.Common.Models.csproj",
+        "projectName": "Hypelens.Common.Models",
+        "projectPath": "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/Hypelens.Common.Models.csproj",
+        "packagesPath": "/Users/akyriako/.nuget/packages/",
+        "outputPath": "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/obj/",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "/usr/local/share/dotnet/sdk/NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "/Users/akyriako/.config/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "netcoreapp3.1"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "netcoreapp3.1": {
+            "targetAlias": "netcoreapp3.1",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "targetAlias": "netcoreapp3.1",
+          "dependencies": {
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[12.0.3, )"
+            },
+            "TweetinviAPI": {
+              "target": "Package",
+              "version": "[5.0.3, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[3.1.10, 3.1.10]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/5.0.102/RuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/Users/akyriako/Work/HYPELENS/Hypelens.Functions.TextAnalyzer/Hypelens.Functions.TextAnalyzer.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/akyriako/Work/HYPELENS/Hypelens.Functions.TextAnalyzer/Hypelens.Functions.TextAnalyzer.csproj",
+        "projectName": "Hypelens.Functions.TextAnalyzer",
+        "projectPath": "/Users/akyriako/Work/HYPELENS/Hypelens.Functions.TextAnalyzer/Hypelens.Functions.TextAnalyzer.csproj",
+        "packagesPath": "/Users/akyriako/.nuget/packages/",
+        "outputPath": "/Users/akyriako/Work/HYPELENS/Hypelens.Functions.TextAnalyzer/obj/",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "/usr/local/share/dotnet/sdk/NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "/Users/akyriako/.config/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "netcoreapp3.1"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "netcoreapp3.1": {
+            "targetAlias": "netcoreapp3.1",
+            "projectReferences": {
+              "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/Hypelens.Common.Models.csproj": {
+                "projectPath": "/Users/akyriako/Work/HYPELENS/Hypelens.Common/Hypelens.Common.Models/Hypelens.Common.Models.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "targetAlias": "netcoreapp3.1",
+          "dependencies": {
+            "Azure.AI.TextAnalytics": {
+              "target": "Package",
+              "version": "[5.1.0-beta.3, )"
+            },
+            "Microsoft.Azure.WebJobs.Extensions.EventHubs": {
+              "target": "Package",
+              "version": "[4.1.1, )"
+            },
+            "Microsoft.NET.Sdk.Functions": {
+              "target": "Package",
+              "version": "[3.0.7, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[3.1.10, 3.1.10]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/5.0.102/RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

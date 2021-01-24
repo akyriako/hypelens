@@ -5,7 +5,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Functions.SensorsO
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Common.Models", "Hypelens.Common\Hypelens.Common.Models\Hypelens.Common.Models.csproj", "{7ED8FDAE-E093-4A10-A369-33EC83B3F63C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Functions.TextAnalyzer", "Hypelens.Functions.TextAnalyzer\Hypelens.Functions.TextAnalyzer.csproj", "{2D423CB1-484E-4A4F-B8CD-FE68F5CF3F47}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hypelens.Functions.TextAnalyzer", "Hypelens.Functions\Hypelens.Functions.TextAnalyzer\Hypelens.Functions.TextAnalyzer.csproj", "{5BC9297C-4F21-439B-AD0E-9BF9867D489E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,9 +29,9 @@ Global
 		{7ED8FDAE-E093-4A10-A369-33EC83B3F63C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7ED8FDAE-E093-4A10-A369-33EC83B3F63C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7ED8FDAE-E093-4A10-A369-33EC83B3F63C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2D423CB1-484E-4A4F-B8CD-FE68F5CF3F47}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2D423CB1-484E-4A4F-B8CD-FE68F5CF3F47}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2D423CB1-484E-4A4F-B8CD-FE68F5CF3F47}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2D423CB1-484E-4A4F-B8CD-FE68F5CF3F47}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5BC9297C-4F21-439B-AD0E-9BF9867D489E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5BC9297C-4F21-439B-AD0E-9BF9867D489E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5BC9297C-4F21-439B-AD0E-9BF9867D489E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5BC9297C-4F21-439B-AD0E-9BF9867D489E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
