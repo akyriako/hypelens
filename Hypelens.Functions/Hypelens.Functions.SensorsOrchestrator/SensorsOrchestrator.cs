@@ -47,8 +47,8 @@ namespace Hypelens.Functions.SensorsOrchestrator
             int matchingTweetsCnt = 0;
             int buffedtoEventHubIdx = 0;
 
-            SentimentIntensityAnalyzer sentimentIntensityAnalyzer = new SentimentIntensityAnalyzer();
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 10, 0));
+            //SentimentIntensityAnalyzer sentimentIntensityAnalyzer = new SentimentIntensityAnalyzer();
+            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 5, 0));
             Dictionary<string, SensorCollectedTweet> sensorCollectedItems = new Dictionary<string, SensorCollectedTweet>();
 
             var semaphore = new SemaphoreSlim(1);
@@ -67,7 +67,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
             filteredStream.MatchingTweetReceived += async (sender, args) =>
             {
-                if (matchingTweetsCnt < 500 && !cancellationTokenSource.IsCancellationRequested)
+                if (matchingTweetsCnt < 1500 && !cancellationTokenSource.IsCancellationRequested)
                 {
                     try
                     {
@@ -76,13 +76,13 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
                         if (sensor.Process)
                         {
-                            var tweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.Text.Sanitize());
-                            SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet, tweetPolarityScores.Compound);
+                            //var tweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.Text.Sanitize());
+                            SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet);
 
                             if (args.Tweet.QuotedTweet != null)
                             {
-                                var quotedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.QuotedTweet.Text.Sanitize());
-                                SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet, tweetPolarityScores.Compound);
+                                //var quotedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.QuotedTweet.Text.Sanitize());
+                                SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet);
 
                                 tweet.OriginalTweetId = quotedTweet.TweetId;
 
@@ -95,8 +95,8 @@ namespace Hypelens.Functions.SensorsOrchestrator
                             }
                             else if (args.Tweet.RetweetedTweet != null && args.Tweet.QuotedTweet == null)
                             {
-                                var retweetedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.RetweetedTweet.Text.Sanitize());
-                                SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet, retweetedTweetPolarityScores.Compound);
+                                //var retweetedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.RetweetedTweet.Text.Sanitize());
+                                SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet);
 
                                 tweet.OriginalTweetId = retweetedTweet.TweetId;
 
@@ -123,6 +123,8 @@ namespace Hypelens.Functions.SensorsOrchestrator
                                 {
                                     await outputEvents.FlushAsync(new CancellationTokenSource(new TimeSpan(0,0,15)).Token);
                                     Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
+
+                                    System.Console.WriteLine("##### FLUSH #####");
                                 }
 
                                 semaphore.Release();
@@ -179,7 +181,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
         private static void WriteCollectedItemToConsole(SensorCollectedTweet sensorCollectedItem)
         {
-            System.Console.WriteLine($"{sensorCollectedItem.TweetId}\t{sensorCollectedItem.CompoundPolarityScore.ToString()}\t{sensorCollectedItem.FavoritesCount.ToString()}\t{sensorCollectedItem.RetweetsCount.ToString()}\t{sensorCollectedItem.Text}");
+            System.Console.WriteLine($"{DateTime.Now.ToShortTimeString()}\t{sensorCollectedItem.TweetId}\t{sensorCollectedItem.FavoritesCount.ToString()}\t{sensorCollectedItem.RetweetsCount.ToString()}\t{sensorCollectedItem.Text}");
         }
 
         private static void TwitterStream_LimitReached(object sender, Tweetinvi.Events.LimitReachedEventArgs e)

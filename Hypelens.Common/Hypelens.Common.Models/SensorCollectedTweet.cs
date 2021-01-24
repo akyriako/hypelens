@@ -31,8 +31,8 @@ namespace Hypelens.Common.Models
         [JsonProperty("createdAt")]
         public DateTime CreatedAt { get; set; }
 
-        [JsonProperty("compoundPolarityScore")]
-        public double CompoundPolarityScore { get; set; }
+        [JsonProperty("sentiment")]
+        public Sentiment Sentiment { get; set; }
 
         [JsonProperty("favorites")]
         public int FavoritesCount { get; set; }
@@ -54,7 +54,7 @@ namespace Hypelens.Common.Models
 
         }
 
-        public SensorCollectedTweet(Sensor sensor, ITweet tweet, double polarityScore)
+        public SensorCollectedTweet(Sensor sensor, ITweet tweet)
         {
             SensorId = sensor.Id;
             TenantId = sensor.TenantId;
@@ -62,7 +62,6 @@ namespace Hypelens.Common.Models
             Text = tweet.Text;
             Url = tweet.Url;
             CreatedAt = tweet.CreatedAt.DateTime;
-            CompoundPolarityScore = polarityScore;
             FavoritesCount = tweet.FavoriteCount;
             RetweetsCount = tweet.RetweetCount;
 

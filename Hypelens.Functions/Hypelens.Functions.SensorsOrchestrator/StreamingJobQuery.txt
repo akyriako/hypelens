@@ -1,12 +1,25 @@
-﻿WITH MENTIONS_QRY AS 
+﻿
+WITH 
+HASHTAGS_QRY AS 
 (
     SELECT 
-    tweetsevents.id as sensorId, 
-    tweetsevents.tenantId as tenantId, 
+    analysedtweets.id as sensorId, 
+    analysedtweets.tenantId as tenantId, 
+    analysedtweets.sentiment.polarityScores.Positive as polarity,
+    LOWER(Hashtags.ArrayValue) AS hashtags,
+    System.Timestamp as Time
+    FROM analysedtweets TIMESTAMP BY CreatedAt
+    CROSS APPLY GetArrayElements(analysedtweets.hashtags) AS Hashtags
+),
+MENTIONS_QRY AS 
+(
+    SELECT 
+    analysedtweets.id as sensorId, 
+    analysedtweets.tenantId as tenantId, 
     Mentions.ArrayValue AS mentions,
     System.Timestamp as Time
-    FROM tweetsevents TIMESTAMP BY CreatedAt
-    CROSS APPLY GetArrayElements(tweetsevents.mentions) AS Mentions
+    FROM analysedtweets TIMESTAMP BY CreatedAt
+    CROSS APPLY GetArrayElements(analysedtweets.mentions) AS Mentions
 )
 
 SELECT 
@@ -16,7 +29,7 @@ SELECT
     mentions AS mentions,
 	COUNT(*) AS count,
     System.TimeStamp() AS time
-INTO powerbimentions
+INTO blobmentions
 FROM MENTIONS_QRY
 GROUP BY
     tenantId,
@@ -24,18 +37,6 @@ GROUP BY
     mentions,
 	TumblingWindow(minute, 30)
 HAVING [Count] > 1
-
-WITH HASHTAGS_QRY AS 
-(
-    SELECT 
-    tweetsevents.id as sensorId, 
-    tweetsevents.tenantId as tenantId, 
-    tweetsevents.compoundPolarityScore as polarity,
-    LOWER(Hashtags.ArrayValue) AS hashtags,
-    System.Timestamp as Time
-    FROM tweetsevents TIMESTAMP BY CreatedAt
-    CROSS APPLY GetArrayElements(tweetsevents.hashtags) AS Hashtags
-)
 
 SELECT 
     udf.uuidv4(0) as id,
@@ -45,7 +46,7 @@ SELECT
 	COUNT(*) AS count,
     AVG(polarity) as polarity,
     System.TimeStamp() AS time
-INTO powerbihashtags
+INTO blobhashtags
 FROM HASHTAGS_QRY
 GROUP BY
     tenantId,
@@ -55,16 +56,42 @@ GROUP BY
 HAVING [Count] > 1
 
 SELECT 
-    tweetsevents.id as sensorId,
-    tweetsevents.tenantId as tenantId, 
-    tweetsevents.location,
+    analysedtweets.id as sensorId,
+    analysedtweets.tenantId as tenantId, 
+    analysedtweets.location,
     COUNT(*) AS Count,
     System.Timestamp as Time
-INTO powerbilocations
-FROM tweetsevents TIMESTAMP BY CreatedAt
+INTO bloblocations
+FROM analysedtweets TIMESTAMP BY CreatedAt
 GROUP BY
-    tweetsevents.tenantId,
-    tweetsevents.id,
-    tweetsevents.location,
+    analysedtweets.tenantId,
+    analysedtweets.id,
+    analysedtweets.location,
 	TumblingWindow(minute, 30)
 HAVING [location] IS NOT NULL
+
+SELECT 
+    analysedtweets.id as sensorId,
+    analysedtweets.tenantId as tenantId, 
+    analysedtweets.createdBy,
+    COUNT(*) AS Count,
+    System.Timestamp as Time
+INTO blobinfluencers
+FROM analysedtweets TIMESTAMP BY CreatedAt
+GROUP BY
+    analysedtweets.tenantId,
+    analysedtweets.id,
+    analysedtweets.createdBy,
+	TumblingWindow(minute, 30)
+HAVING [Count] > 1
+
+
+
+function main(fromDateTime) 
+{
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) 
+    {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
