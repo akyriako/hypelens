@@ -1,8 +1,8 @@
 ﻿{
-  "id": "53171124-3995-4924-83b2-f674b1093069",
+  "id": "99171124-3995-4924-83b2-f674b1093069",
   "tenantId": "e489f125-ad73-4bad-ae5b-1377ad514929",
-  "hashtags": [ "#CapitolRiots" ],
-  "follow": [ "realDonaldTrump" ],
+  "hashtags": [ "#COVID", "#COVID19" ],
+  "follow": [],
   "languages": null,
   "process": true,
   "scheduledEnqueuedWaitTime": 0
