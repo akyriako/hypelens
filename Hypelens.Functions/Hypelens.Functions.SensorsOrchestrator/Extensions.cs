@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Hypelens.Common.Models;
+using Microsoft.Azure.WebJobs;
 using Tweetinvi;
 using Tweetinvi.Models;
 using Tweetinvi.Streaming;
@@ -13,6 +15,16 @@ namespace Hypelens.Functions.SensorsOrchestrator
         public static string Sanitize(this string text)
         {
             return Regex.Replace(text, @"(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)", " ").ToString();
+        }
+
+        public static async Task<Task> AddAsync<T>(this IAsyncCollector<T> asyncCollector, T item, int itemsQuota, int itemsIdx, bool pushToEventHub = false)
+        {
+            if ((itemsIdx < itemsQuota) && pushToEventHub)
+            {
+                return asyncCollector.AddAsync(item);
+            }
+
+            return Task.CompletedTask;
         }
 
         public static void TryStopFilteredStreamIfNotNull(this IFilteredStream filteredStream)

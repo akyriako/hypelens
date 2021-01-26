@@ -1,0 +1,26 @@
+﻿ //#if DEBUG
+            //            using (cancellationTokenSource = new CancellationTokenSource(timeout))
+            //            {
+            //                Tuple<TenantSettings, Sensor, CancellationToken> sensorBootstrap = new Tuple<TenantSettings, Sensor, CancellationToken>(orchestratorInput.Item1, orchestratorInput.Item2, cancellationTokenSource.Token);
+            //                outputs.Add(await context.CallActivityAsync<string>("ConsumeSensor", sensorBootstrap));
+            //            }
+
+            //#else
+            //            using (var cancellationTokenSource = new CancellationTokenSource())
+            //            {
+            //                Tuple<TenantSettings, Sensor, CancellationToken> sensorBootstrap = new Tuple<TenantSettings, Sensor, CancellationToken>(orchestratorInput.Item1, orchestratorInput.Item2, cancellationTokenSource.Token);
+            //                Task activityTask = context.CallActivityAsync<string>("ConsumeSensor", sensorBootstrap);
+            //                Task timeoutTask = context.CreateTimer(deadline, cancellationTokenSource.Token);
+
+            //                Task winner = await Task.WhenAny(activityTask, timeoutTask);
+
+            //                if (winner == activityTask)
+            //                {
+            //                    cancellationTokenSource.Cancel();
+            //                }
+            //                else
+            //                {
+            //                    //return false;
+            //                }
+            //            }
+            //#endif

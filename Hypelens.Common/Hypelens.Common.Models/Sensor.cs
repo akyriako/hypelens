@@ -26,6 +26,9 @@ namespace Hypelens.Common.Models
         [JsonProperty("process")]
         public bool Process { get; set; }
 
+        [JsonProperty("active")]
+        public bool Active { get; set; }
+
         [JsonProperty("scheduledEnqueuedWaitTime")]
         public uint? ScheduledEnqueuedWaitTime { get; set; }
 

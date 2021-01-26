@@ -25,18 +25,68 @@ namespace Hypelens.Functions.SensorsOrchestrator
     {
         [FunctionName("SensorsOrchestrator")]
         public static async Task<List<string>> RunOrchestrator(
-            [OrchestrationTrigger] IDurableOrchestrationContext context)
+            [OrchestrationTrigger] IDurableOrchestrationContext context,
+            ILogger log)
         {
             var sensorBootstrap = context.GetInput<Tuple<TenantSettings, Sensor>>();
-
             var outputs = new List<string>();
-            outputs.Add(await context.CallActivityAsync<string>("ActivateSensor", sensorBootstrap));
-            
+
+            await context.CallActivityAsync<string>("RescheduleSensor", sensorBootstrap);
+
+            TimeSpan timeout = TimeSpan.FromSeconds((Constants.SensorTimeoutInMinutes + 0.5) * 60);
+            DateTime deadline = context.CurrentUtcDateTime.Add(timeout);
+
+            using (var cancellationTokenSource = new CancellationTokenSource())
+            {
+                Task consumerSensorTask = context.CallActivityAsync<string>("ConsumeSensor", sensorBootstrap);
+                Task timeoutTask = context.CreateTimer(deadline, cancellationTokenSource.Token);
+
+                Task winner = await Task.WhenAny(consumerSensorTask, timeoutTask);
+
+                if (winner == consumerSensorTask)
+                {
+                    log.LogInformation($"Orchestration completed for Sensor {sensorBootstrap.Item2.TenantId}.");
+                    cancellationTokenSource.Cancel();
+                }
+                else
+                {
+                    log.LogInformation($"Orchestration timed out for Sensor {sensorBootstrap.Item2.TenantId}.");
+                }
+            }
+
             return outputs;
         }
 
-        [FunctionName("ActivateSensor")]
-        public static async Task<string> ActivateSensorAsync(
+        [FunctionName("RescheduleSensor")]
+        public static async Task RescheduleSensorAsync(
+            [ActivityTrigger] Tuple<TenantSettings, Sensor> sensorBootstrap,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
+            [ServiceBus("start-sensors-queue", Connection = "AzureServiceBus", EntityType = Microsoft.Azure.WebJobs.ServiceBus.EntityType.Queue)] IAsyncCollector<Message> scheduledSensors,
+            ILogger log)
+        {
+            var sensor = sensorBootstrap.Item2;
+
+            var documentResponse = await documentClient.ReadDocumentAsync<Sensor>(
+            UriFactory.CreateDocumentUri("sensors", "pipelines", sensor.Id),
+            new RequestOptions { PartitionKey = new PartitionKey(sensor.TenantId) });
+
+            if (documentResponse != null && documentResponse.Document != null && documentResponse.Document.Active == true)
+            {
+                DateTime scheduledEnqueueTimeUtc = DateTime.UtcNow.AddMinutes(Constants.SensorTimeoutInMinutes + 1);
+
+                Message scheduledSensor = new Message()
+                {
+                    Body = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(sensor).ToString()),
+                    ScheduledEnqueueTimeUtc = scheduledEnqueueTimeUtc,
+                    ContentType = "application/json"
+                };
+
+                await scheduledSensors.AddAsync(scheduledSensor);
+            }
+        }
+
+        [FunctionName("ConsumeSensor")]
+        public static async Task<string> ConsumeSensorAsync(
             [ActivityTrigger] Tuple<TenantSettings, Sensor> sensorBootstrap,
             [EventHub("sensors-collected-items", Connection = "EventHub")] IAsyncCollector<SensorCollectedTweet> outputEvents,
             ILogger log)
@@ -44,16 +94,17 @@ namespace Hypelens.Functions.SensorsOrchestrator
             var settings = sensorBootstrap.Item1;
             var sensor = sensorBootstrap.Item2;
 
-            int matchingTweetsCnt = 0;
+            int matchingTweetsQuota = 500;
+            int matchingTweetsIndex = 0;
             int buffedtoEventHubIdx = 0;
 
-            //SentimentIntensityAnalyzer sentimentIntensityAnalyzer = new SentimentIntensityAnalyzer();
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 5, 0));
+            TimeSpan timeout = new TimeSpan(0, Constants.SensorTimeoutInMinutes, 0);
+            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
             Dictionary<string, SensorCollectedTweet> sensorCollectedItems = new Dictionary<string, SensorCollectedTweet>();
 
             var semaphore = new SemaphoreSlim(1);
 
-            log.LogInformation($"Saying hello from sensor {sensor.TenantId}.");
+            log.LogInformation($"Start consuming tweets from Sensor {sensor.TenantId}.");
 
             var userClient = new TwitterClient(settings.ConsumerKey, settings.ConsumerSecret, settings.AccessToken, settings.AccessSecret);
 
@@ -65,46 +116,51 @@ namespace Hypelens.Functions.SensorsOrchestrator
             filteredStream.AddFollow(userClient, sensor);
             filteredStream.AddLanguageFilter(sensor);
 
+            var cancellationToken = cancellationTokenSource.Token;
+
             filteredStream.MatchingTweetReceived += async (sender, args) =>
             {
-                if (matchingTweetsCnt < 1500 && !cancellationTokenSource.IsCancellationRequested)
+                if (matchingTweetsIndex < matchingTweetsQuota)
                 {
-                    try
+                    if (!cancellationToken.IsCancellationRequested)
                     {
-                        bool added = false;
-                        matchingTweetsCnt++;
-
-                        if (sensor.Process)
+                        try
                         {
-                            //var tweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.Text.Sanitize());
+                            bool process = sensor.Process;
+                            bool added = false;
+
                             SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet);
 
                             if (args.Tweet.QuotedTweet != null)
                             {
-                                //var quotedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.QuotedTweet.Text.Sanitize());
                                 SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet);
-
                                 tweet.OriginalTweetId = quotedTweet.TweetId;
-
                                 added = sensorCollectedItems.TryAdd(quotedTweet.TweetId, quotedTweet);
 
                                 if (added)
                                 {
-                                    WriteCollectedItemToConsole(quotedTweet);
+                                    Interlocked.Increment(ref matchingTweetsIndex);
+
+                                    WriteCollectedItemToConsole(quotedTweet, matchingTweetsIndex);
+
+                                    await outputEvents.AddAsync(quotedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
+                                    Interlocked.Increment(ref buffedtoEventHubIdx);
                                 }
                             }
                             else if (args.Tweet.RetweetedTweet != null && args.Tweet.QuotedTweet == null)
                             {
-                                //var retweetedTweetPolarityScores = sentimentIntensityAnalyzer.PolarityScores(args.Tweet.RetweetedTweet.Text.Sanitize());
                                 SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet);
-
                                 tweet.OriginalTweetId = retweetedTweet.TweetId;
-
                                 added = sensorCollectedItems.TryAdd(retweetedTweet.TweetId, retweetedTweet);
 
                                 if (added)
                                 {
-                                    WriteCollectedItemToConsole(retweetedTweet);
+                                    Interlocked.Increment(ref matchingTweetsIndex);
+
+                                    WriteCollectedItemToConsole(retweetedTweet, matchingTweetsIndex);
+
+                                    await outputEvents.AddAsync(retweetedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
+                                    Interlocked.Increment(ref buffedtoEventHubIdx);
                                 }
                             }
 
@@ -112,35 +168,50 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
                             if (added)
                             {
-                                WriteCollectedItemToConsole(tweet);
+                                Interlocked.Increment(ref matchingTweetsIndex);
 
-                                await outputEvents.AddAsync(tweet);
+                                WriteCollectedItemToConsole(tweet, matchingTweetsIndex);
+
+                                await outputEvents.AddAsync(tweet, matchingTweetsQuota, matchingTweetsIndex, process);
                                 Interlocked.Increment(ref buffedtoEventHubIdx);
 
                                 await semaphore.WaitAsync();
 
                                 if (buffedtoEventHubIdx >= 32)
                                 {
-                                    await outputEvents.FlushAsync(new CancellationTokenSource(new TimeSpan(0,0,15)).Token);
-                                    Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
+                                    using (var flushCancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 0, 15)))
+                                    {
+                                        await outputEvents.FlushAsync(flushCancellationTokenSource.Token);
+                                        Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
 
-                                    System.Console.WriteLine("##### FLUSH #####");
+                                        System.Console.WriteLine("##### FLUSH #####");
+                                    }
                                 }
 
                                 semaphore.Release();
                             }
                         }
-                    }
-                    catch (Exception matchingTweetReceivedException)
-                    {
-                        Console.WriteLine(matchingTweetReceivedException.Message);
+                        catch (Exception matchingTweetReceivedException)
+                        {
+                            Console.WriteLine(matchingTweetReceivedException.Message);
+                        }
                     }
                 }
                 else
                 {
-                    System.Console.WriteLine("##### END #####");
+                    System.Console.WriteLine("##### REACHED TWEETS CAP #####");
 
-                    filteredStream.TryStopFilteredStreamIfNotNull();
+                    try
+                    {
+                        if (cancellationTokenSource != null)
+                        {
+                            cancellationTokenSource.Cancel(true);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                    
                 }
             };
 
@@ -155,20 +226,33 @@ namespace Hypelens.Functions.SensorsOrchestrator
             try
             {
                 Task twitterStartMatchingAnyConditionTask = filteredStream.StartMatchingAnyConditionAsync();
-                Task.WaitAny(new Task[] { twitterStartMatchingAnyConditionTask }, cancellationTokenSource.Token);
+                Task.WaitAny(new Task[] { twitterStartMatchingAnyConditionTask }, cancellationToken);
             }
             catch (OperationCanceledException operationCancelledException)
             {
+                Console.WriteLine(operationCancelledException.Message);
+                System.Console.WriteLine("##### CANCELLED #####");
 
+                log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} timed out or cancelled");
             }
             catch (Exception exception)
             {
                 Console.WriteLine(exception.Message);
                 System.Console.WriteLine("##### FAILED #####");
+
+                log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} failed.{exception.Message}");
             }
             finally
             {
+                if (cancellationTokenSource != null)
+                {
+                    cancellationTokenSource.Dispose();
+                    cancellationTokenSource = null;
+                }
+
                 filteredStream.TryStopFilteredStreamIfNotNull();
+
+                System.Console.WriteLine("##### FINISHED #####");
             }
 
             //sensorCollectedItems.ToList().ForEach(async pair =>
@@ -176,12 +260,25 @@ namespace Hypelens.Functions.SensorsOrchestrator
             //    await outputEvents.AddAsync(pair.Value);
             //});
 
-            return $"Hello {sensor.TenantId}!";
+            log.LogInformation($"Finished consuming tweets from Sensor {sensor.TenantId}.");
+
+            return $"Finished consuming tweets from Sensor { sensor.TenantId}.";
         }
 
-        private static void WriteCollectedItemToConsole(SensorCollectedTweet sensorCollectedItem)
+        private static void WriteCollectedItemToConsole(SensorCollectedTweet sensorCollectedItem, int idx)
         {
-            System.Console.WriteLine($"{DateTime.Now.ToShortTimeString()}\t{sensorCollectedItem.TweetId}\t{sensorCollectedItem.FavoritesCount.ToString()}\t{sensorCollectedItem.RetweetsCount.ToString()}\t{sensorCollectedItem.Text}");
+            string tweetText = String.Empty;
+
+            if (sensorCollectedItem.Text.Length >= 145)
+            {
+                tweetText = sensorCollectedItem.Text.Substring(0, 144);
+            }
+            else
+            {
+                tweetText = sensorCollectedItem.Text;
+            }
+
+            System.Console.WriteLine($"{idx.ToString().PadLeft(5, ' ')}\t{DateTime.Now.ToLongTimeString()}\t{sensorCollectedItem.TweetId}\t{sensorCollectedItem.FavoritesCount.ToString()}\t{sensorCollectedItem.RetweetsCount.ToString()}\t{tweetText}");
         }
 
         private static void TwitterStream_LimitReached(object sender, Tweetinvi.Events.LimitReachedEventArgs e)
@@ -217,24 +314,32 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 orchestrationStatus.RuntimeStatus == OrchestrationRuntimeStatus.Failed ||
                 orchestrationStatus.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
             {
-                //var documentResponse = await documentClient.ReadDocumentAsync<TenantSettings>(
-                //UriFactory.CreateDocumentUri("settings", "tenants", sensor.TenantId),
-                //new RequestOptions { PartitionKey = new PartitionKey("43171124-3995-4924-83b2-f674b109306e") });
 
-                //if (documentResponse != null && documentResponse.Document != null)
-                //{
-                //    string instanceId = sensor.TenantId;
-                //    Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
+                try
+                {
+                    var documentResponse = await documentClient.ReadDocumentAsync<TenantSettings>(
+                    UriFactory.CreateDocumentUri("settings", "tenants", sensor.TenantId),
+                    new RequestOptions { PartitionKey = new PartitionKey(Constants.AppId) });
 
-                //    await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
-                //    await sensors.AddAsync(sensor);
-                //}
+                    if (documentResponse != null && documentResponse.Document != null)
+                    {
+                        string instanceId = sensor.TenantId;
 
-                string instanceId = sensor.TenantId;
-                Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(TenantSettings.GetDevelopmentSettings(), sensor);
+                        if (!sensor.Active)
+                        {
+                            sensor.Active = true;
+                        }
 
-                await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
-                await sensors.AddAsync(sensor);
+                        Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
+
+                        await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
+                        await sensors.AddAsync(sensor);
+                    }
+                }
+                catch (DocumentClientException documentClientException)
+                {
+                    log.LogWarning($"Failed to retrieve information for Tenant '{sensor.TenantId}'.");
+                }
             }
             else
             {
@@ -248,11 +353,11 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 await scheduledSensors.AddAsync(scheduledSensor);
             }
 
-            log.LogInformation($"Started orchestration '{sensor.TenantId}' for tenant '{sensor.TenantId}'.");
+            log.LogInformation($"Started orchestration for Sensor '{sensor.Id}' for Tenant '{sensor.TenantId}'.");
         }
 
-        [FunctionName("TerminateSensorInstance")]
-        public static async Task TerminateSensor(
+        [FunctionName("StopSensorInstance")]
+        public static async Task StopSensor(
             [ServiceBusTrigger("terminate-sensors-queue", Connection = "AzureServiceBus")] string stopSensorRequest,
             [DurableClient] IDurableOrchestrationClient client,
             ILogger log)
@@ -290,10 +395,65 @@ namespace Hypelens.Functions.SensorsOrchestrator
             }
         }
 
+        [FunctionName("TerminateSensor")]
+        public static async Task<IActionResult> TerminateSensor(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "Tenants/{tenantId}/Sensors/{sensorId}/Terminate")] HttpRequestMessage httpRequestMessage,
+            [DurableClient] IDurableOrchestrationClient client,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
+            [ServiceBus("terminate-sensors-queue", Connection = "AzureServiceBus", EntityType = Microsoft.Azure.WebJobs.ServiceBus.EntityType.Queue)] IAsyncCollector<Sensor> terminateSensors,
+            string sensorId,
+            string tenantId,
+            ILogger log)
+        {
+            if (string.IsNullOrEmpty(sensorId))
+            {
+                return new BadRequestObjectResult($"{sensorId} is required");
+            }
+
+            if (string.IsNullOrEmpty(tenantId))
+            {
+                return new BadRequestObjectResult($"{tenantId} is required");
+            }
+
+            try
+            {
+                var documentResponse = await documentClient.ReadDocumentAsync<Sensor>(
+                UriFactory.CreateDocumentUri("sensors", "pipelines", sensorId),
+                new RequestOptions { PartitionKey = new PartitionKey(tenantId) });
+
+                if (documentResponse != null && documentResponse.Document != null)
+                {
+                    if (documentResponse.Document.Active == true)
+                    {
+                        Sensor sensor = new Sensor()
+                        {
+                            Id = sensorId,
+                            TenantId = tenantId,
+                        };
+
+                        await terminateSensors.AddAsync(sensor);
+                    }
+                }
+            }
+            catch (DocumentClientException documentClientException)
+            {
+                log.LogError(documentClientException, $"Sensor '{sensorId}' for tenant '{tenantId}' was not found.");
+                return new NotFoundResult();
+            }
+            catch (Exception exception)
+            {
+                log.LogError(exception, $"Terminating Sensor '{sensorId}' for tenant '{tenantId}' failed.");
+                return new BadRequestObjectResult($"Terminating Sensor '{sensorId}' for tenant '{tenantId}' failed. {exception.Message}");
+            }
+
+            return new OkResult();
+        }
+
         [FunctionName("ScheduleSensor")]
         public static async Task<IActionResult> ScheduleSensor(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "Tenants/{tenantId}/Sensors/Schedule")] HttpRequestMessage httpRequestMessage,
             [DurableClient] IDurableOrchestrationClient client,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
             [ServiceBus("start-sensors-queue", Connection = "AzureServiceBus", EntityType = Microsoft.Azure.WebJobs.ServiceBus.EntityType.Queue)] IAsyncCollector<Message> scheduledSensors,
             string tenantId,
             ILogger log)
@@ -303,7 +463,23 @@ namespace Hypelens.Functions.SensorsOrchestrator
                 return new BadRequestObjectResult($"{tenantId} is required");
             }
 
+            Message scheduledSensor = null;
             Sensor sensor = await httpRequestMessage.Content.ReadAsAsync<Sensor>();
+            uint scheduledEnqueuedWaitTime =
+                        !sensor.ScheduledEnqueuedWaitTime.HasValue || (sensor.ScheduledEnqueuedWaitTime.HasValue && sensor.ScheduledEnqueuedWaitTime.Value <= 0) ?
+                        Constants.ScheduledEnqueuedTimeInMinutes :
+                        sensor.ScheduledEnqueuedWaitTime.Value;
+
+            DateTime scheduledEnqueueTimeUtc = DateTime.UtcNow.AddMinutes(scheduledEnqueuedWaitTime);
+
+#if DEBUG
+
+            if (scheduledEnqueuedWaitTime == 1)
+            {
+                scheduledEnqueueTimeUtc = DateTime.UtcNow.AddSeconds(15);
+            }
+
+#endif
 
             if (sensor == null || sensor.TenantId != tenantId)
             {
@@ -311,16 +487,51 @@ namespace Hypelens.Functions.SensorsOrchestrator
             }
             else
             {
-                uint scheduledEnqueuedWaitTime = sensor.ScheduledEnqueuedWaitTime.HasValue ? sensor.ScheduledEnqueuedWaitTime.Value : Constants.ScheduledEnqueuedTimeInMinutes;
-
-                Message scheduledSensor = new Message()
+                try
                 {
-                    Body = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(sensor).ToString()),
-                    ScheduledEnqueueTimeUtc = DateTime.UtcNow.AddMinutes(scheduledEnqueuedWaitTime),
-                    ContentType = "application/json"
-                };
+                    var documentResponse = await documentClient.ReadDocumentAsync<Sensor>(
+                    UriFactory.CreateDocumentUri("sensors", "pipelines", sensor.Id),
+                    new RequestOptions { PartitionKey = new PartitionKey(sensor.TenantId) });
 
-                await scheduledSensors.AddAsync(scheduledSensor);
+                    if (documentResponse != null && documentResponse.Document != null)
+                    {
+                        if (documentResponse.Document.Active == false)
+                        {
+                            sensor.Active = true;
+
+                            scheduledSensor = new Message()
+                            {
+                                Body = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(sensor).ToString()),
+                                ScheduledEnqueueTimeUtc = scheduledEnqueueTimeUtc,
+                                ContentType = "application/json"
+                            };
+                        }
+                    }
+                }
+                catch (DocumentClientException documentClientException)
+                {
+                    if (documentClientException.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        sensor.Active = true;
+
+                        scheduledSensor = new Message()
+                        {
+                            Body = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(sensor).ToString()),
+                            ScheduledEnqueueTimeUtc = scheduledEnqueueTimeUtc,
+                            ContentType = "application/json"
+                        };
+                    }
+                }
+                catch (Exception exception)
+                {
+                    log.LogError(exception, $"Scheduling Sensor '{sensor.Id}' for tenant '{sensor.TenantId}' failed.");
+                    return new BadRequestObjectResult($"Scheduling Sensor '{sensor.Id}' for tenant '{sensor.TenantId}' failed. {exception.Message}");
+                }
+
+                if (scheduledSensor != null)
+                {
+                    await scheduledSensors.AddAsync(scheduledSensor);
+                }
 
                 return new OkResult();
             }
