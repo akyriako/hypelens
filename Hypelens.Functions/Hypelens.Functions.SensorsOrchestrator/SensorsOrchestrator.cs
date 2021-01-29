@@ -88,6 +88,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
         [FunctionName("ConsumeSensor")]
         public static async Task<string> ConsumeSensorAsync(
             [ActivityTrigger] Tuple<TenantSettings, Sensor> sensorBootstrap,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
             [EventHub("sensors-collected-items", Connection = "EventHub")] IAsyncCollector<SensorCollectedTweet> outputEvents,
             ILogger log)
         {
@@ -104,165 +105,186 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
             var semaphore = new SemaphoreSlim(1);
 
-            log.LogInformation($"Start consuming tweets from Sensor {sensor.TenantId}.");
-
-            var userClient = new TwitterClient(settings.ConsumerKey, settings.ConsumerSecret, settings.AccessToken, settings.AccessSecret);
-
-            var filteredStream = userClient.Streams.CreateFilteredStream();
-            filteredStream.TweetMode = TweetMode.Extended;
-            filteredStream.StallWarnings = false;
-
-            filteredStream.AddTrack(sensor);
-            filteredStream.AddFollow(userClient, sensor);
-            filteredStream.AddLanguageFilter(sensor);
-
-            var cancellationToken = cancellationTokenSource.Token;
-
-            filteredStream.MatchingTweetReceived += async (sender, args) =>
+            try
             {
-                if (matchingTweetsIndex < matchingTweetsQuota)
+                var documentResponse = await documentClient.ReadDocumentAsync<Sensor>(
+                UriFactory.CreateDocumentUri("sensors", "pipelines", sensor.Id),
+                new RequestOptions { PartitionKey = new PartitionKey(sensor.TenantId) });
+
+                if (documentResponse != null && documentResponse.Document != null && documentResponse.Document.Active == true)
                 {
-                    if (!cancellationToken.IsCancellationRequested)
+                    log.LogInformation($"Start consuming tweets from Sensor {sensor.TenantId}.");
+
+                    var userClient = new TwitterClient(settings.ConsumerKey, settings.ConsumerSecret, settings.AccessToken, settings.AccessSecret);
+
+                    var filteredStream = userClient.Streams.CreateFilteredStream();
+                    filteredStream.TweetMode = TweetMode.Extended;
+                    filteredStream.StallWarnings = false;
+
+                    filteredStream.AddTrack(sensor);
+                    filteredStream.AddFollow(userClient, sensor);
+                    filteredStream.AddLanguageFilter(sensor);
+
+                    var cancellationToken = cancellationTokenSource.Token;
+
+                    filteredStream.MatchingTweetReceived += async (sender, args) =>
                     {
-                        try
+                        if (matchingTweetsIndex < matchingTweetsQuota)
                         {
-                            bool process = sensor.Process;
-                            bool added = false;
-
-                            SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet);
-
-                            if (args.Tweet.QuotedTweet != null)
+                            if (!cancellationToken.IsCancellationRequested)
                             {
-                                SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet);
-                                tweet.OriginalTweetId = quotedTweet.TweetId;
-                                added = sensorCollectedItems.TryAdd(quotedTweet.TweetId, quotedTweet);
-
-                                if (added)
+                                try
                                 {
-                                    Interlocked.Increment(ref matchingTweetsIndex);
+                                    bool process = sensor.Process;
+                                    bool added = false;
 
-                                    WriteCollectedItemToConsole(quotedTweet, matchingTweetsIndex);
+                                    SensorCollectedTweet tweet = new SensorCollectedTweet(sensor, args.Tweet);
 
-                                    await outputEvents.AddAsync(quotedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
-                                    Interlocked.Increment(ref buffedtoEventHubIdx);
-                                }
-                            }
-                            else if (args.Tweet.RetweetedTweet != null && args.Tweet.QuotedTweet == null)
-                            {
-                                SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet);
-                                tweet.OriginalTweetId = retweetedTweet.TweetId;
-                                added = sensorCollectedItems.TryAdd(retweetedTweet.TweetId, retweetedTweet);
-
-                                if (added)
-                                {
-                                    Interlocked.Increment(ref matchingTweetsIndex);
-
-                                    WriteCollectedItemToConsole(retweetedTweet, matchingTweetsIndex);
-
-                                    await outputEvents.AddAsync(retweetedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
-                                    Interlocked.Increment(ref buffedtoEventHubIdx);
-                                }
-                            }
-
-                            added = sensorCollectedItems.TryAdd(tweet.TweetId, tweet);
-
-                            if (added)
-                            {
-                                Interlocked.Increment(ref matchingTweetsIndex);
-
-                                WriteCollectedItemToConsole(tweet, matchingTweetsIndex);
-
-                                await outputEvents.AddAsync(tweet, matchingTweetsQuota, matchingTweetsIndex, process);
-                                Interlocked.Increment(ref buffedtoEventHubIdx);
-
-                                await semaphore.WaitAsync();
-
-                                if (buffedtoEventHubIdx >= 32)
-                                {
-                                    using (var flushCancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 0, 15)))
+                                    if (args.Tweet.QuotedTweet != null)
                                     {
-                                        await outputEvents.FlushAsync(flushCancellationTokenSource.Token);
-                                        Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
+                                        SensorCollectedTweet quotedTweet = new SensorCollectedTweet(sensor, args.Tweet.QuotedTweet);
+                                        tweet.OriginalTweetId = quotedTweet.TweetId;
+                                        added = sensorCollectedItems.TryAdd(quotedTweet.TweetId, quotedTweet);
 
-                                        System.Console.WriteLine("##### FLUSH #####");
+                                        if (added)
+                                        {
+                                            Interlocked.Increment(ref matchingTweetsIndex);
+
+                                            WriteCollectedItemToConsole(quotedTweet, matchingTweetsIndex);
+
+                                            await outputEvents.AddAsync(quotedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
+                                            Interlocked.Increment(ref buffedtoEventHubIdx);
+                                        }
+                                    }
+                                    else if (args.Tweet.RetweetedTweet != null && args.Tweet.QuotedTweet == null)
+                                    {
+                                        SensorCollectedTweet retweetedTweet = new SensorCollectedTweet(sensor, args.Tweet.RetweetedTweet);
+                                        tweet.OriginalTweetId = retweetedTweet.TweetId;
+                                        added = sensorCollectedItems.TryAdd(retweetedTweet.TweetId, retweetedTweet);
+
+                                        if (added)
+                                        {
+                                            Interlocked.Increment(ref matchingTweetsIndex);
+
+                                            WriteCollectedItemToConsole(retweetedTweet, matchingTweetsIndex);
+
+                                            await outputEvents.AddAsync(retweetedTweet, matchingTweetsQuota, matchingTweetsIndex, process);
+                                            Interlocked.Increment(ref buffedtoEventHubIdx);
+                                        }
+                                    }
+
+                                    added = sensorCollectedItems.TryAdd(tweet.TweetId, tweet);
+
+                                    if (added)
+                                    {
+                                        Interlocked.Increment(ref matchingTweetsIndex);
+
+                                        WriteCollectedItemToConsole(tweet, matchingTweetsIndex);
+
+                                        await outputEvents.AddAsync(tweet, matchingTweetsQuota, matchingTweetsIndex, process);
+                                        Interlocked.Increment(ref buffedtoEventHubIdx);
+
+                                        await semaphore.WaitAsync();
+
+                                        if (buffedtoEventHubIdx >= 32)
+                                        {
+                                            using (var flushCancellationTokenSource = new CancellationTokenSource(new TimeSpan(0, 0, 15)))
+                                            {
+                                                await outputEvents.FlushAsync(flushCancellationTokenSource.Token);
+                                                Interlocked.Exchange(ref buffedtoEventHubIdx, 0);
+
+                                                System.Console.WriteLine("##### FLUSH #####");
+                                            }
+                                        }
+
+                                        semaphore.Release();
                                     }
                                 }
-
-                                semaphore.Release();
+                                catch (Exception matchingTweetReceivedException)
+                                {
+                                    Console.WriteLine(matchingTweetReceivedException.Message);
+                                }
                             }
                         }
-                        catch (Exception matchingTweetReceivedException)
+                        else
                         {
-                            Console.WriteLine(matchingTweetReceivedException.Message);
+                            System.Console.WriteLine("##### REACHED TWEETS CAP #####");
+                            log.LogInformation($"Tweets cap for Sensor {sensor.Id} reached, activity will be terminated.");
+
+                            try
+                            {
+                                if (cancellationTokenSource != null)
+                                {
+                                    cancellationTokenSource.Cancel(true);
+                                }
+                            }
+                            catch (Exception)
+                            {
+                            }
+
                         }
-                    }
-                }
-                else
-                {
-                    System.Console.WriteLine("##### REACHED TWEETS CAP #####");
+                    };
+
+                    filteredStream.NonMatchingTweetReceived += (sender, args) =>
+                    {
+                        System.Console.WriteLine($"NOT MATCHING: {args.Tweet.Text}");
+                    };
+
+                    filteredStream.WarningFallingBehindDetected += TwitterStream_WarningFallingBehindDetected;
+                    filteredStream.LimitReached += TwitterStream_LimitReached;
 
                     try
                     {
+                        Task twitterStartMatchingAnyConditionTask = filteredStream.StartMatchingAnyConditionAsync();
+                        Task.WaitAny(new Task[] { twitterStartMatchingAnyConditionTask }, cancellationToken);
+                    }
+                    catch (OperationCanceledException operationCancelledException)
+                    {
+                        Console.WriteLine(operationCancelledException.Message);
+                        System.Console.WriteLine("##### CANCELLED #####");
+
+                        log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} timed out or cancelled");
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine(exception.Message);
+                        System.Console.WriteLine("##### FAILED #####");
+
+                        log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} failed.{exception.Message}");
+                    }
+                    finally
+                    {
                         if (cancellationTokenSource != null)
                         {
-                            cancellationTokenSource.Cancel(true);
+                            cancellationTokenSource.Dispose();
+                            cancellationTokenSource = null;
                         }
+
+                        filteredStream.TryStopFilteredStreamIfNotNull();
+
+                        System.Console.WriteLine("##### FINISHED #####");
                     }
-                    catch (Exception)
-                    {
-                    }
-                    
+
+                    log.LogInformation($"Finished consuming tweets from Sensor {sensor.TenantId}.");
                 }
-            };
-
-            filteredStream.NonMatchingTweetReceived += (sender, args) =>
-            {
-                System.Console.WriteLine($"NOT MATCHING: {args.Tweet.Text}");
-            };
-
-            filteredStream.WarningFallingBehindDetected += TwitterStream_WarningFallingBehindDetected;
-            filteredStream.LimitReached += TwitterStream_LimitReached;
-
-            try
-            {
-                Task twitterStartMatchingAnyConditionTask = filteredStream.StartMatchingAnyConditionAsync();
-                Task.WaitAny(new Task[] { twitterStartMatchingAnyConditionTask }, cancellationToken);
             }
-            catch (OperationCanceledException operationCancelledException)
+            catch (DocumentClientException documentClientException)
             {
-                Console.WriteLine(operationCancelledException.Message);
-                System.Console.WriteLine("##### CANCELLED #####");
+                if (documentClientException.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    string abortMessage = $"Aborted consuming tweets from Sensor { sensor.TenantId}. Sensor was not found.";
+                    log.LogError(documentClientException, abortMessage);
 
-                log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} timed out or cancelled");
+                    return abortMessage;
+                }
             }
             catch (Exception exception)
             {
-                Console.WriteLine(exception.Message);
-                System.Console.WriteLine("##### FAILED #####");
-
-                log.LogInformation($"Consuming tweets from Sensor {sensor.TenantId} failed.{exception.Message}");
-            }
-            finally
-            {
-                if (cancellationTokenSource != null)
-                {
-                    cancellationTokenSource.Dispose();
-                    cancellationTokenSource = null;
-                }
-
-                filteredStream.TryStopFilteredStreamIfNotNull();
-
-                System.Console.WriteLine("##### FINISHED #####");
+                log.LogError(exception, $"Consuming tweets for Sensor '{sensor.Id}' for tenant '{sensor.TenantId}' failed.");
             }
 
-            //sensorCollectedItems.ToList().ForEach(async pair =>
-            //{
-            //    await outputEvents.AddAsync(pair.Value);
-            //});
+            return $"Finished consuming tweets from Sensor {sensor.Id}.";
 
-            log.LogInformation($"Finished consuming tweets from Sensor {sensor.TenantId}.");
-
-            return $"Finished consuming tweets from Sensor { sensor.TenantId}.";
         }
 
         private static void WriteCollectedItemToConsole(SensorCollectedTweet sensorCollectedItem, int idx)
@@ -294,7 +316,6 @@ namespace Hypelens.Functions.SensorsOrchestrator
         [FunctionName("StartSensorInstance")]
         public static async Task StartSensor(
             [ServiceBusTrigger("start-sensors-queue", Connection = "AzureServiceBus")] string message,
-            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] IAsyncCollector<Sensor> sensors,
             [CosmosDB(databaseName: "settings", collectionName: "tenants", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
             [ServiceBus("start-sensors-queue", Connection = "AzureServiceBus", EntityType = Microsoft.Azure.WebJobs.ServiceBus.EntityType.Queue)] IAsyncCollector<Message> scheduledSensors,
             [DurableClient] IDurableOrchestrationClient client,
@@ -325,15 +346,10 @@ namespace Hypelens.Functions.SensorsOrchestrator
                     {
                         string instanceId = sensor.TenantId;
 
-                        if (!sensor.Active)
-                        {
-                            sensor.Active = true;
-                        }
-
                         Tuple<TenantSettings, Sensor> sensorBootstrap = new Tuple<TenantSettings, Sensor>(documentResponse.Document, sensor);
 
                         await client.StartNewAsync<Tuple<TenantSettings, Sensor>>("SensorsOrchestrator", instanceId, sensorBootstrap);
-                        await sensors.AddAsync(sensor);
+                        //await sensors.AddAsync(sensor);
                     }
                 }
                 catch (DocumentClientException documentClientException)
@@ -455,6 +471,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
             [DurableClient] IDurableOrchestrationClient client,
             [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] Microsoft.Azure.Documents.IDocumentClient documentClient,
             [ServiceBus("start-sensors-queue", Connection = "AzureServiceBus", EntityType = Microsoft.Azure.WebJobs.ServiceBus.EntityType.Queue)] IAsyncCollector<Message> scheduledSensors,
+            [CosmosDB(databaseName: "sensors", collectionName: "pipelines", ConnectionStringSetting = "CosmosDb")] IAsyncCollector<Sensor> pipelines,
             string tenantId,
             ILogger log)
         {
@@ -530,6 +547,7 @@ namespace Hypelens.Functions.SensorsOrchestrator
 
                 if (scheduledSensor != null)
                 {
+                    await pipelines.AddAsync(sensor);
                     await scheduledSensors.AddAsync(scheduledSensor);
                 }
 

@@ -17,6 +17,9 @@ namespace Hypelens.Common.Models
         [JsonProperty("hashtags")]
         public string[] Hashtags { get; set; }
 
+        [JsonProperty("track")]
+        public string[] Track { get; set; }
+
         [JsonProperty("follow")]
         public string[] Follow { get; set; }
 

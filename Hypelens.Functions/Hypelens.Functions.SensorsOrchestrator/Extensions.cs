@@ -61,6 +61,14 @@ namespace Hypelens.Functions.SensorsOrchestrator
                     filteredStream.AddTrack($"{hashtag}");
                 });
             }
+
+            if (sensor.Track != null && sensor.Track.Count() > 0)
+            {
+                sensor.Track.ToList().ForEach(track =>
+                {
+                    filteredStream.AddTrack($"{track}");
+                });
+            }
         }
 
         public static void AddLanguageFilter(this IFilteredStream filteredStream, Sensor sensor)
