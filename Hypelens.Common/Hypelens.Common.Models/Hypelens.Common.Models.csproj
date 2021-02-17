@@ -9,14 +9,6 @@
     <PackageReference Include="TweetinviAPI" Version="5.0.3" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="TenantSettings.cs" />
-    <Compile Remove="TwitterUser.cs" />
-    <Compile Remove="SensorCollectedTweet.cs" />
-    <Compile Remove="Sentiment.cs" />
     <Compile Remove="Polarity.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="SensorSample.json" />
-    <None Remove="TenantSettingsSample.json" />
   </ItemGroup>
 </Project>

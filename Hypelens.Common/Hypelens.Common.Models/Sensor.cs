@@ -17,6 +17,9 @@ namespace Hypelens.Common.Models
         [JsonProperty("hashtags")]
         public string[] Hashtags { get; set; }
 
+        [JsonProperty("track")]
+        public string[] Track { get; set; }
+
         [JsonProperty("follow")]
         public string[] Follow { get; set; }
 
@@ -25,6 +28,9 @@ namespace Hypelens.Common.Models
 
         [JsonProperty("process")]
         public bool Process { get; set; }
+
+        [JsonProperty("active")]
+        public bool Active { get; set; }
 
         [JsonProperty("scheduledEnqueuedWaitTime")]
         public uint? ScheduledEnqueuedWaitTime { get; set; }
