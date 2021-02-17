@@ -21,7 +21,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Hypelens.Common\Hypelens.Common.Models\Hypelens.Common.Models.csproj">
+    <ProjectReference Include="..\..\Hypelens.Common\Hypelens.Common.Models\Hypelens.Common.Models.csproj">
       <GlobalPropertiesToRemove></GlobalPropertiesToRemove>
     </ProjectReference>
   </ItemGroup>

@@ -400,8 +400,4 @@
       <GlobalPropertiesToRemove></GlobalPropertiesToRemove>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="Constants.cs" />
-    <Compile Remove="Extensions.cs" />
-  </ItemGroup>
 </Project>
